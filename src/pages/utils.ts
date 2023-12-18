@@ -1,4 +1,4 @@
-import { providers } from "ethers";
+import { BigNumber, Signer, Wallet, providers } from "ethers";
 import {
   keccak256,
   solidityPack,
@@ -8,8 +8,25 @@ import {
 import base64url from "base64url";
 import { JwtPayload } from "jwt-decode";
 import { OpenIDAccount } from "@/utils";
+import { HttpRpcClient } from "@account-abstraction/sdk";
+import {
+  EntryPoint__factory,
+  UserOperationStruct,
+} from "@account-abstraction/contracts";
+import { isContractDeployed } from "@/utils/utils";
 
-export const generateWalletAddress = async (
+// export const BundlerUrl = "https://api.blocknative.com/v1/goerli/bundler";
+// export const BundlerUrl = "https://api.gelato.digital//bundlers/5/rpc"
+// export const BundlerUrl = "https://bundler-goerli.edennetwork.io"
+export const BundlerUrl = "https://goerli-bundler.etherspot.io";
+// export const BundlerUrl = "https://public.stackup.sh/api/v1/node/ethereum-goerli";
+export const ProviderUrl = "https://node.wallet.unipass.id/eth-goerli";
+export const EntryPointAddr = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
+export const FactoryAddr = "0x4342Ef649122B81cc81E6156DbBcb8e50CE05B84";
+export const ChainId = 5;
+export const UseBundler = true;
+
+export const constructOpenIdAcount = async (
   ownerAddress: string,
   jwtPayload: JwtPayload
 ) => {
@@ -49,14 +66,12 @@ export const generateWalletAddress = async (
       [toUtf8Bytes(jwtPayload.iss!), toUtf8Bytes(jwtPayload.aud! as string)]
     )
   );
-  const provider = new providers.JsonRpcProvider(
-    "https://node.wallet.unipass.id/eth-goerli"
-  );
+  const provider = new providers.JsonRpcProvider(ProviderUrl);
 
   const openIDAccount = new OpenIDAccount({
-    factoryAddress: "0x4342Ef649122B81cc81E6156DbBcb8e50CE05B84",
+    factoryAddress: FactoryAddr,
     provider,
-    entryPointAddress: "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+    entryPointAddress: EntryPointAddr,
     owner: ownerAddress,
     openid_key,
     audiences: [audience],
@@ -64,5 +79,72 @@ export const generateWalletAddress = async (
     keys: [hexlify(public_key1), hexlify(public_key2)],
   });
 
+  await openIDAccount.initialize();
+
   return openIDAccount;
+};
+
+export const estimateGasByBundler = async (userOp: UserOperationStruct) => {
+  const client = new HttpRpcClient(BundlerUrl, EntryPointAddr, ChainId);
+  const gasInfo = await client.estimateUserOpGas(userOp);
+  return gasInfo;
+};
+
+export const sleep = (ms: number) => {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+export const sendUserOpToBundler = async (
+  openIDAccount: OpenIDAccount,
+  userOp: UserOperationStruct
+) => {
+  const client = new HttpRpcClient(BundlerUrl, EntryPointAddr, ChainId);
+  const uoHash = await client.sendUserOpToBundler(userOp!);
+  console.log("uoHash: ", uoHash);
+  await sleep(1500);
+  const accountAddress = await openIDAccount.getAddress();
+  let deployed = false;
+  for (let i = 0; i < 20; i++) {
+    deployed = await isContractDeployed(accountAddress, openIDAccount.provider);
+    if (deployed) {
+      return {
+        userOpHash: uoHash,
+        isDeployed: deployed,
+      };
+    }
+    await sleep(1500);
+  }
+
+  return {
+    userOpHash: uoHash,
+    isDeployed: deployed,
+  };
+};
+
+export const sendUserOpBySigner = async (
+  userOp: UserOperationStruct,
+  signer: Signer
+) => {
+  const gasCost = await calcGasCost(userOp);
+  const entryPoint = EntryPoint__factory.connect(EntryPointAddr, signer);
+  let receipt = await (
+    await entryPoint.handleOps([userOp], signer.getAddress(), {
+      gasLimit: gasCost.add(1000000),
+    })
+  ).wait();
+  console.log(receipt);
+};
+
+export const calcGasLimit = async (userOp: UserOperationStruct) => {
+  const gasUsed = BigNumber.from(await userOp.preVerificationGas)
+    .add(BigNumber.from(await userOp.verificationGasLimit))
+    .add(BigNumber.from(await userOp.callGasLimit));
+
+  return gasUsed;
+};
+
+export const calcGasCost = async (userOp: UserOperationStruct) => {
+  const gasLimit = await calcGasLimit(userOp);
+  const gasPrice = BigNumber.from(await userOp.maxFeePerGas);
+  return gasLimit.mul(gasPrice);
 };

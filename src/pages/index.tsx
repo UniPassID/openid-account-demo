@@ -7,11 +7,9 @@ import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 import { JwtPayload, jwtDecode } from "jwt-decode";
 import ReactJson from "react-json-view";
 import {
-  EntryPoint__factory,
   UserOperationStruct,
 } from "@account-abstraction/contracts";
-import { HttpRpcClient } from "@account-abstraction/sdk";
-import { generateWalletAddress } from "./utils";
+import { constructOpenIdAcount, ProviderUrl, BundlerUrl, calcGasCost, sendUserOpToBundler, sendUserOpBySigner, UseBundler, estimateGasByBundler } from "./utils";
 import styles from "./index.less";
 import { OpenIDAccount } from "@/utils";
 
@@ -42,7 +40,7 @@ export default function HomePage() {
   const getAddress = async () => {
     try {
       setGenAddressLoading(true);
-      const account = await generateWalletAddress(ownerAddress, jwt!);
+      const account = await constructOpenIdAcount(ownerAddress, jwt!);
       console.log(account);
       const address = await account.getAddress();
       setOpenIDAccount(account);
@@ -55,15 +53,21 @@ export default function HomePage() {
 
   const estimateCost = async () => {
     try {
+      console.log("estimateCost");
       setEthLoading(true);
       const userOp = await openIDAccount?.createUnsignedUserOp({
         target: "0x",
         data: "0x",
       });
-      console.log("estimateCost");
 
       console.log(userOp);
-      const estimatedGasCost = await openIDAccount?.calcGasCost(userOp!);
+      console.log(
+        "pre:", (await userOp!.preVerificationGas).toString(),
+        "verify:", (await userOp!.verificationGasLimit).toString(),
+        "call:", (await userOp!.callGasLimit).toString()
+        );
+  
+      const estimatedGasCost = await calcGasCost(userOp!);
       const estimatedGasCostEther = formatEther(estimatedGasCost!);
       console.log("estimatedGasCost: ", estimatedGasCostEther);
       setEstimatedGasCostEther(estimatedGasCostEther);
@@ -77,7 +81,7 @@ export default function HomePage() {
     try {
       setEthLoading(true);
       const provider = new providers.JsonRpcProvider(
-        "https://node.wallet.unipass.id/eth-goerli"
+        ProviderUrl
       );
       const balance = await provider.getBalance(address);
       setEthBalance(formatEther(balance));
@@ -116,36 +120,18 @@ export default function HomePage() {
 
     userOp!.signature = signature;
 
-    // let bundler_url = "https://public.stackup.sh/api/v1/node/ethereum-goerli";
-
-    // const client = new HttpRpcClient(
-    //   bundler_url,
-    //   "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
-    //   5
-    // );
-    // console.log("userOp: ", userOp);
-    // const uoHash = await client.sendUserOpToBundler(userOp!);
-    // console.log("uoHash: ", uoHash);
-    // const txHash = await openIDAccount?.getUserOpReceipt(uoHash);
-    // console.log("deploy tx hash: ", txHash);
-
+  if (UseBundler) {
+    await sendUserOpToBundler(openIDAccount!, userOp!);
+  } else {
     const provider = new providers.JsonRpcProvider(
-      "https://node.wallet.unipass.id/eth-goerli"
+      ProviderUrl
     );
     let signer = new Wallet(
-      "0x8703df6310f15eda642837d246d22983f9893244295b6a7b72149f1cf55c5892",
+      "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
       provider
     );
-    const entryPoint = EntryPoint__factory.connect(
-      "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
-      signer
-    );
-    let receipt = await (
-      await entryPoint.handleOps([userOp!], signer.address, {
-        gasLimit: 10000000,
-      })
-    ).wait();
-    console.log(receipt);
+    await sendUserOpBySigner(userOp!,signer);
+  }
   };
 
   return (
