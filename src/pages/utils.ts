@@ -26,7 +26,7 @@ export const FactoryAddr = "0x4342Ef649122B81cc81E6156DbBcb8e50CE05B84";
 export const ChainId = 5;
 export const UseBundler = true;
 
-export const constructOpenIdAcount = async (
+export const constructOpenIdAccount = async (
   ownerAddress: string,
   jwtPayload: JwtPayload
 ) => {

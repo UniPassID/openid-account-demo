@@ -1,15 +1,20 @@
 import { useState } from "react";
 import { useAsyncEffect } from "ahooks";
 import { Wallet, providers } from "ethers";
-import { Button, Input } from "antd";
-import { formatEther, isAddress } from "ethers/lib/utils";
+import { Button, Input, message } from "antd";
+import { formatEther, isAddress, parseEther } from "ethers/lib/utils";
 import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 import { JwtPayload, jwtDecode } from "jwt-decode";
 import ReactJson from "react-json-view";
+import { UserOperationStruct } from "@account-abstraction/contracts";
 import {
-  UserOperationStruct,
-} from "@account-abstraction/contracts";
-import { constructOpenIdAcount, ProviderUrl, BundlerUrl, calcGasCost, sendUserOpToBundler, sendUserOpBySigner, UseBundler, estimateGasByBundler } from "./utils";
+  constructOpenIdAccount,
+  ProviderUrl,
+  calcGasCost,
+  sendUserOpToBundler,
+  sendUserOpBySigner,
+  UseBundler,
+} from "./utils";
 import styles from "./index.less";
 import { OpenIDAccount } from "@/utils";
 
@@ -22,6 +27,7 @@ export default function HomePage() {
   const [ethLoading, setEthLoading] = useState<boolean>(false);
   const [deployWalletLoading, setDeployWalletLoading] =
     useState<boolean>(false);
+  const [sendETHLoading, setSendETHLoading] = useState<boolean>(false);
   const [openIDAccount, setOpenIDAccount] = useState<
     OpenIDAccount | undefined
   >();
@@ -30,6 +36,8 @@ export default function HomePage() {
   const [ethBalance, setEthBalance] = useState("0");
   const [userOp, setUserOp] = useState<UserOperationStruct | undefined>();
   const [userOpHash, setUserOpHash] = useState<string | undefined>();
+  const [isDeployed, setIsDeployed] = useState<boolean>(false);
+  const [isOauth, setIsOauth] = useState<boolean>(false);
 
   useAsyncEffect(async () => {
     if (openIDAccount?.audiences) {
@@ -40,9 +48,11 @@ export default function HomePage() {
   const getAddress = async () => {
     try {
       setGenAddressLoading(true);
-      const account = await constructOpenIdAcount(ownerAddress, jwt!);
+      const account = await constructOpenIdAccount(ownerAddress, jwt!);
       console.log(account);
       const address = await account.getAddress();
+      console.log(`account.isDeployed: ${account.isDeployed}`);
+      setIsDeployed(account.isDeployed ?? false);
       setOpenIDAccount(account);
       console.log(`generated wallet address: ${address}`);
       setWalletAddress(address);
@@ -60,13 +70,6 @@ export default function HomePage() {
         data: "0x",
       });
 
-      console.log(userOp);
-      console.log(
-        "pre:", (await userOp!.preVerificationGas).toString(),
-        "verify:", (await userOp!.verificationGasLimit).toString(),
-        "call:", (await userOp!.callGasLimit).toString()
-        );
-  
       const estimatedGasCost = await calcGasCost(userOp!);
       const estimatedGasCostEther = formatEther(estimatedGasCost!);
       console.log("estimatedGasCost: ", estimatedGasCostEther);
@@ -80,9 +83,7 @@ export default function HomePage() {
   const getETHBalance = async (address: string) => {
     try {
       setEthLoading(true);
-      const provider = new providers.JsonRpcProvider(
-        ProviderUrl
-      );
+      const provider = new providers.JsonRpcProvider(ProviderUrl);
       const balance = await provider.getBalance(address);
       setEthBalance(formatEther(balance));
     } finally {
@@ -93,6 +94,7 @@ export default function HomePage() {
   const deployWallet = async () => {
     try {
       setDeployWalletLoading(true);
+      setIsOauth(true);
       console.log("createUnsignedUserOp...");
       const userOp = await openIDAccount?.createUnsignedUserOp({
         target: "0x",
@@ -103,13 +105,64 @@ export default function HomePage() {
       console.log("createUnsignedUserOp finish: ", userOp);
       setUserOpHash(userOpHash);
     } finally {
-      setDeployWalletLoading(false);
+      // setDeployWalletLoading(false);
     }
   };
 
   const onUserOpHashOAuthSuccess = async (
     credentialResponse: CredentialResponse
   ) => {
+    console.log(credentialResponse);
+    setIsOauth(false);
+    const signature = openIDAccount?.generateSignature(
+      credentialResponse.credential!
+    );
+    if (!signature) return;
+    console.log("signature: ", signature);
+    console.log("sig_len: ", signature?.length);
+
+    userOp!.signature = signature;
+    try {
+      if (UseBundler) {
+        await sendUserOpToBundler(openIDAccount!, userOp!);
+      } else {
+        const provider = new providers.JsonRpcProvider(ProviderUrl);
+        let signer = new Wallet(
+          "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+          provider
+        );
+        await sendUserOpBySigner(userOp!, signer);
+      }
+    } catch (e: any) {
+      message.error(e.message ?? "");
+    } finally {
+      setDeployWalletLoading(false);
+    }
+  };
+
+  const sendETH = async () => {
+    try {
+      setSendETHLoading(true);
+      setIsOauth(true);
+      console.log("sendETH...");
+      const userOp = await openIDAccount?.createUnsignedUserOp({
+        target: "0x02cFd022397c65C32FA34299Ce8BF3BF7523E973",
+        data: "0x",
+        value: parseEther("0.001"),
+      });
+      setUserOp(userOp);
+      const userOpHash = await openIDAccount?.getUserOpHash(userOp!);
+      console.log("createUnsignedUserOp finish: ", userOp);
+      setUserOpHash(userOpHash);
+    } finally {
+      // setDeployWalletLoading(false);
+    }
+  };
+
+  const onSendETHUserOpHashOAuthSuccess = async (
+    credentialResponse: CredentialResponse
+  ) => {
+    setIsOauth(false);
     console.log(credentialResponse);
     const signature = openIDAccount?.generateSignature(
       credentialResponse.credential!
@@ -119,19 +172,23 @@ export default function HomePage() {
     console.log("sig_len: ", signature?.length);
 
     userOp!.signature = signature;
-
-  if (UseBundler) {
-    await sendUserOpToBundler(openIDAccount!, userOp!);
-  } else {
-    const provider = new providers.JsonRpcProvider(
-      ProviderUrl
-    );
-    let signer = new Wallet(
-      "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-      provider
-    );
-    await sendUserOpBySigner(userOp!,signer);
-  }
+    try {
+      if (UseBundler) {
+        const hash = await sendUserOpToBundler(openIDAccount!, userOp!);
+        message.success(`uoHash: ${hash.userOpHash}`, 0);
+      } else {
+        const provider = new providers.JsonRpcProvider(ProviderUrl);
+        let signer = new Wallet(
+          "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+          provider
+        );
+        await sendUserOpBySigner(userOp!, signer);
+      }
+    } catch (e: any) {
+      message.error(e?.message ?? "");
+    } finally {
+      setSendETHLoading(false);
+    }
   };
 
   return (
@@ -210,28 +267,54 @@ export default function HomePage() {
               Refresh
             </Button>
           </div>
-          <div className={styles.genAddress}>
-            {userOpHash ? (
-              <GoogleLogin
-                width={400}
-                size="large"
-                onSuccess={onUserOpHashOAuthSuccess}
-                nonce={userOpHash}
-                onError={() => {
-                  console.log("Login Failed");
-                }}
-              />
-            ) : (
-              <Button
-                onClick={deployWallet}
-                loading={deployWalletLoading}
-                disabled={parseFloat(ethBalance) <= 0}
-                style={{ width: "100%" }}
-              >
-                Deploy Wallet
-              </Button>
-            )}
-          </div>
+          {!isDeployed ? (
+            <div className={styles.genAddress}>
+              {userOpHash && isOauth ? (
+                <GoogleLogin
+                  width={400}
+                  size="large"
+                  onSuccess={onUserOpHashOAuthSuccess}
+                  nonce={userOpHash}
+                  onError={() => {
+                    setIsOauth(false);
+                    console.log("Deploy Failed");
+                  }}
+                />
+              ) : (
+                <Button
+                  onClick={deployWallet}
+                  loading={deployWalletLoading}
+                  disabled={parseFloat(ethBalance) <= 0}
+                  style={{ width: "100%" }}
+                >
+                  Deploy Wallet
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className={styles.genAddress}>
+              {userOpHash && isOauth ? (
+                <GoogleLogin
+                  width={400}
+                  size="large"
+                  onSuccess={onSendETHUserOpHashOAuthSuccess}
+                  nonce={userOpHash}
+                  onError={() => {
+                    setIsOauth(false);
+                    console.log("Send Failed");
+                  }}
+                />
+              ) : (
+                <Button
+                  onClick={sendETH}
+                  loading={sendETHLoading}
+                  disabled={parseFloat(ethBalance) <= 0}
+                >
+                  Send 0.001 Goerli ETH
+                </Button>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
