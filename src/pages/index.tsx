@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAsyncEffect } from "ahooks";
 import { Wallet, providers } from "ethers";
-import { Button, Input, message } from "antd";
+import { Button, Input, message, notification } from "antd";
 import { formatEther, isAddress, parseEther } from "ethers/lib/utils";
 import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 import { JwtPayload, jwtDecode } from "jwt-decode";
@@ -19,6 +19,8 @@ import styles from "./index.less";
 import { OpenIDAccount } from "@/utils";
 
 export default function HomePage() {
+  const [messageApi, messageContextHolder] = message.useMessage();
+  const [api, contextHolder] = notification.useNotification();
   const [jwt, setJwt] = useState<JwtPayload | undefined>();
   const [ownerAddress, setOwnerAddress] = useState<string>(
     "0x02cFd022397c65C32FA34299Ce8BF3BF7523E973"
@@ -175,7 +177,11 @@ export default function HomePage() {
     try {
       if (UseBundler) {
         const hash = await sendUserOpToBundler(openIDAccount!, userOp!);
-        message.success(`uoHash: ${hash.userOpHash}`, 0);
+        api.success({
+          message: "Transaction Success",
+          description: `uoHash: ${hash.userOpHash}`,
+          placement: "bottomRight",
+        });
       } else {
         const provider = new providers.JsonRpcProvider(ProviderUrl);
         let signer = new Wallet(
@@ -193,6 +199,8 @@ export default function HomePage() {
 
   return (
     <div className={styles.container}>
+      {contextHolder}
+      {messageContextHolder}
       <span className={styles.title}>
         Demo of Building a 4337 Wallet with OpenID signature capability
       </span>
