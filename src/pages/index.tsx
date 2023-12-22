@@ -13,8 +13,8 @@ import {
   calcGasCost,
   sendUserOpToBundler,
 } from "./utils";
+import { OpenIDAccount } from "../utils";
 import styles from "./index.less";
-import { OpenIDAccount } from "@unipass-wallet/openid-account";
 
 export default function HomePage() {
   const [api, contextHolder] = notification.useNotification();

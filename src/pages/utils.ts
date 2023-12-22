@@ -7,7 +7,7 @@ import {
 } from "ethers/lib/utils";
 import base64url from "base64url";
 import { JwtPayload } from "jwt-decode";
-import { OpenIDAccount, utils } from "@unipass-wallet/openid-account";
+import { OpenIDAccount, utils } from "../utils";
 import { HttpRpcClient } from "@account-abstraction/sdk";
 import {
   EntryPoint__factory,
