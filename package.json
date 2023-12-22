@@ -19,7 +19,8 @@
     "react-json-view": "^1.21.3",
     "umi": "^4.0.89",
     "@account-abstraction/contracts": "^0.6.0",
-    "@account-abstraction/sdk": "0.6"
+    "@account-abstraction/sdk": "0.6",
+    "@unipass-wallet/openid-account": "1.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.0.33",

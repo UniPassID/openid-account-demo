@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAsyncEffect } from "ahooks";
-import { Wallet, providers } from "ethers";
-import { Button, Input, message, notification } from "antd";
+import { BigNumber, providers } from "ethers";
+import { Button, Input, notification } from "antd";
 import { formatEther, isAddress, parseEther } from "ethers/lib/utils";
 import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 import { JwtPayload, jwtDecode } from "jwt-decode";
@@ -12,19 +12,15 @@ import {
   ProviderUrl,
   calcGasCost,
   sendUserOpToBundler,
-  sendUserOpBySigner,
-  UseBundler,
 } from "./utils";
 import styles from "./index.less";
-import { OpenIDAccount } from "@/utils";
+import { OpenIDAccount } from "@unipass-wallet/openid-account";
 
 export default function HomePage() {
-  const [messageApi, messageContextHolder] = message.useMessage();
   const [api, contextHolder] = notification.useNotification();
   const [jwt, setJwt] = useState<JwtPayload | undefined>();
-  const [ownerAddress, setOwnerAddress] = useState<string>(
-    "0x02cFd022397c65C32FA34299Ce8BF3BF7523E973"
-  );
+  const [ownerAddress, setOwnerAddress] = useState<string>("");
+  const [sendToAddress, setSendToAddress] = useState<string>("");
   const [genAddressLoading, setGenAddressLoading] = useState<boolean>(false);
   const [ethLoading, setEthLoading] = useState<boolean>(false);
   const [deployWalletLoading, setDeployWalletLoading] =
@@ -71,6 +67,10 @@ export default function HomePage() {
         target: "0x",
         data: "0x",
       });
+      let callGasLimit = BigNumber.from(await userOp!.callGasLimit);
+      if (callGasLimit < BigNumber.from(33100)) {
+        userOp!.callGasLimit = 33100;
+      }
 
       const estimatedGasCost = await calcGasCost(userOp!);
       const estimatedGasCostEther = formatEther(estimatedGasCost!);
@@ -102,12 +102,20 @@ export default function HomePage() {
         target: "0x",
         data: "0x",
       });
+      let callGasLimit = BigNumber.from(await userOp!.callGasLimit);
+      if (callGasLimit < BigNumber.from(33100)) {
+        userOp!.callGasLimit = 33100;
+      }
       setUserOp(userOp);
       const userOpHash = await openIDAccount?.getUserOpHash(userOp!);
       console.log("createUnsignedUserOp finish: ", userOp);
       setUserOpHash(userOpHash);
-    } finally {
-      // setDeployWalletLoading(false);
+    } catch (e: any) {
+      api.error({
+        message: "Transaction failed",
+        description: ((e.message ?? "") as string).slice(0, 300),
+        placement: "bottomRight",
+      });
     }
   };
 
@@ -125,18 +133,22 @@ export default function HomePage() {
 
     userOp!.signature = signature;
     try {
-      if (UseBundler) {
-        await sendUserOpToBundler(openIDAccount!, userOp!);
-      } else {
-        const provider = new providers.JsonRpcProvider(ProviderUrl);
-        let signer = new Wallet(
-          "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-          provider
-        );
-        await sendUserOpBySigner(userOp!, signer);
-      }
+      const uoHash = await sendUserOpToBundler(openIDAccount!, userOp!);
+      console.log("uoHash: ", uoHash);
+      const txHash = await openIDAccount?.getUserOpReceipt(uoHash.userOpHash);
+      console.log("deploy tx hash: ", txHash);
+      api.success({
+        message: "Deploy Success",
+        description: `txHash: ${txHash}`,
+        placement: "bottomRight",
+      });
+      setIsDeployed(true);
     } catch (e: any) {
-      message.error(e.message ?? "");
+      api.error({
+        message: "Deploy failed",
+        description: ((e.message ?? "") as string).slice(0, 300),
+        placement: "bottomRight",
+      });
     } finally {
       setDeployWalletLoading(false);
     }
@@ -148,7 +160,7 @@ export default function HomePage() {
       setIsOauth(true);
       console.log("sendETH...");
       const userOp = await openIDAccount?.createUnsignedUserOp({
-        target: "0x02cFd022397c65C32FA34299Ce8BF3BF7523E973",
+        target: sendToAddress,
         data: "0x",
         value: parseEther("0.001"),
       });
@@ -156,8 +168,12 @@ export default function HomePage() {
       const userOpHash = await openIDAccount?.getUserOpHash(userOp!);
       console.log("createUnsignedUserOp finish: ", userOp);
       setUserOpHash(userOpHash);
-    } finally {
-      // setDeployWalletLoading(false);
+    } catch (e: any) {
+      api.error({
+        message: "Transaction failed",
+        description: ((e.message ?? "") as string).slice(0, 300),
+        placement: "bottomRight",
+      });
     }
   };
 
@@ -175,23 +191,21 @@ export default function HomePage() {
 
     userOp!.signature = signature;
     try {
-      if (UseBundler) {
-        const hash = await sendUserOpToBundler(openIDAccount!, userOp!);
-        api.success({
-          message: "Transaction Success",
-          description: `uoHash: ${hash.userOpHash}`,
-          placement: "bottomRight",
-        });
-      } else {
-        const provider = new providers.JsonRpcProvider(ProviderUrl);
-        let signer = new Wallet(
-          "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-          provider
-        );
-        await sendUserOpBySigner(userOp!, signer);
-      }
+      const uoHash = await sendUserOpToBundler(openIDAccount!, userOp!);
+      console.log("uoHash: ", uoHash);
+      const txHash = await openIDAccount?.getUserOpReceipt(uoHash.userOpHash);
+      console.log("deploy tx hash: ", txHash);
+      api.success({
+        message: "Transaction Success",
+        description: `txHash: ${txHash}`,
+        placement: "bottomRight",
+      });
     } catch (e: any) {
-      message.error(e?.message ?? "");
+      api.error({
+        message: "Transaction failed",
+        description: ((e.message ?? "") as string).slice(0, 300),
+        placement: "bottomRight",
+      });
     } finally {
       setSendETHLoading(false);
     }
@@ -200,7 +214,6 @@ export default function HomePage() {
   return (
     <div className={styles.container}>
       {contextHolder}
-      {messageContextHolder}
       <span className={styles.title}>
         Demo of Building a 4337 Wallet with OpenID signature capability
       </span>
@@ -213,7 +226,6 @@ export default function HomePage() {
       <div className={styles.input}>
         <Input
           placeholder="Owner Address"
-          defaultValue="0x02cFd022397c65C32FA34299Ce8BF3BF7523E973"
           onChange={(e) => setOwnerAddress(e.target.value)}
         />
       </div>
@@ -271,6 +283,7 @@ export default function HomePage() {
             <Button
               onClick={() => getETHBalance(walletAddress)}
               loading={ethLoading}
+              style={{ marginLeft: "12px" }}
             >
               Refresh
             </Button>
@@ -301,6 +314,13 @@ export default function HomePage() {
             </div>
           ) : (
             <div className={styles.genAddress}>
+              <div>Send 0.001 Goerli ETH to</div>
+              <Input
+                placeholder="Ethereum Address"
+                onChange={(e) => setSendToAddress(e.target.value)}
+              />
+              <br />
+              <br />
               {userOpHash && isOauth ? (
                 <GoogleLogin
                   width={400}
@@ -316,9 +336,13 @@ export default function HomePage() {
                 <Button
                   onClick={sendETH}
                   loading={sendETHLoading}
-                  disabled={parseFloat(ethBalance) <= 0}
+                  disabled={
+                    parseFloat(ethBalance) <= 0 ||
+                    sendToAddress.length <= 0 ||
+                    !isAddress(sendToAddress)
+                  }
                 >
-                  Send 0.001 Goerli ETH
+                  Confirm
                 </Button>
               )}
             </div>

@@ -1,4 +1,4 @@
-import { BigNumber, Signer, Wallet, providers } from "ethers";
+import { BigNumber, Signer, providers } from "ethers";
 import {
   keccak256,
   solidityPack,
@@ -7,24 +7,23 @@ import {
 } from "ethers/lib/utils";
 import base64url from "base64url";
 import { JwtPayload } from "jwt-decode";
-import { OpenIDAccount } from "@/utils";
+import { OpenIDAccount, utils } from "@unipass-wallet/openid-account";
 import { HttpRpcClient } from "@account-abstraction/sdk";
 import {
   EntryPoint__factory,
   UserOperationStruct,
 } from "@account-abstraction/contracts";
-import { isContractDeployed } from "@/utils/utils";
 
 // export const BundlerUrl = "https://api.blocknative.com/v1/goerli/bundler";
 // export const BundlerUrl = "https://api.gelato.digital//bundlers/5/rpc"
 // export const BundlerUrl = "https://bundler-goerli.edennetwork.io"
-export const BundlerUrl = "https://goerli-bundler.etherspot.io";
+// export const BundlerUrl = "https://goerli-bundler.etherspot.io";
+export const BundlerUrl = "https://bundler.wallet.unipass.vip/eth-goerli";
 // export const BundlerUrl = "https://public.stackup.sh/api/v1/node/ethereum-goerli";
 export const ProviderUrl = "https://node.wallet.unipass.id/eth-goerli";
 export const EntryPointAddr = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
 export const FactoryAddr = "0x4342Ef649122B81cc81E6156DbBcb8e50CE05B84";
 export const ChainId = 5;
-export const UseBundler = true;
 
 export const constructOpenIdAccount = async (
   ownerAddress: string,
@@ -100,19 +99,22 @@ export const sendUserOpToBundler = async (
 ) => {
   const client = new HttpRpcClient(BundlerUrl, EntryPointAddr, ChainId);
   const uoHash = await client.sendUserOpToBundler(userOp!);
-  console.log("uoHash: ", uoHash);
-  await sleep(1500);
-  const accountAddress = await openIDAccount.getAddress();
   let deployed = false;
-  for (let i = 0; i < 20; i++) {
-    deployed = await isContractDeployed(accountAddress, openIDAccount.provider);
-    if (deployed) {
-      return {
-        userOpHash: uoHash,
-        isDeployed: deployed,
-      };
-    }
+  if (!openIDAccount.isDeployed) {
     await sleep(1500);
+    const accountAddress = await openIDAccount.getAddress();
+    for (let i = 0; i < 20; i++) {
+      deployed = await utils.isContractDeployed(
+        accountAddress,
+        openIDAccount.provider
+      );
+      if (deployed) {
+        return {
+          userOpHash: uoHash,
+          isDeployed: deployed,
+        };
+      }
+    }
   }
 
   return {
