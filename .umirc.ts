@@ -3,5 +3,5 @@ import { defineConfig } from "umi";
 export default defineConfig({
   routes: [{ path: "/", component: "index" }],
   npmClient: "yarn",
-  hash: false,
+  mfsu: false,
 });
