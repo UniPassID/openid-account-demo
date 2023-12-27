@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAsyncEffect } from "ahooks";
 import { BigNumber, providers } from "ethers";
-import { Button, Input, notification } from "antd";
+import { Button, Input, notification, InputNumber } from "antd";
 import { formatEther, isAddress, parseEther } from "ethers/lib/utils";
 import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 import { JwtPayload, jwtDecode } from "jwt-decode";
@@ -20,6 +20,7 @@ export default function HomePage() {
   const [api, contextHolder] = notification.useNotification();
   const [jwt, setJwt] = useState<JwtPayload | undefined>();
   const [ownerAddress, setOwnerAddress] = useState<string>("");
+  const [sendETHAmount, setSendETHAmount] = useState<string>("0");
   const [sendToAddress, setSendToAddress] = useState<string>("");
   const [genAddressLoading, setGenAddressLoading] = useState<boolean>(false);
   const [ethLoading, setEthLoading] = useState<boolean>(false);
@@ -162,7 +163,7 @@ export default function HomePage() {
       const userOp = await openIDAccount?.createUnsignedUserOp({
         target: sendToAddress,
         data: "0x",
-        value: parseEther("0.001"),
+        value: parseEther(sendETHAmount),
       });
       setUserOp(userOp);
       const userOpHash = await openIDAccount?.getUserOpHash(userOp!);
@@ -314,7 +315,19 @@ export default function HomePage() {
             </div>
           ) : (
             <div className={styles.genAddress}>
-              <div>Send 0.001 Goerli ETH to</div>
+              <div>
+                Send{"  "}
+                <InputNumber
+                  placeholder="ETH"
+                  defaultValue={0.001}
+                  min={0}
+                  onChange={(value) =>
+                    setSendETHAmount(value?.toString() ?? "0")
+                  }
+                />
+                {"  "}
+                Goerli ETH to
+              </div>
               <Input
                 placeholder="Ethereum Address"
                 onChange={(e) => setSendToAddress(e.target.value)}
@@ -337,6 +350,7 @@ export default function HomePage() {
                   onClick={sendETH}
                   loading={sendETHLoading}
                   disabled={
+                    parseFloat(sendETHAmount) <= 0 ||
                     parseFloat(ethBalance) <= 0 ||
                     sendToAddress.length <= 0 ||
                     !isAddress(sendToAddress)
