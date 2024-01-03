@@ -110,9 +110,11 @@ export const sendUserOpToBundler = async (
         openIDAccount.provider
       );
       if (deployed) {
+        openIDAccount.isDeployed = deployed;
+
         return {
           userOpHash: uoHash,
-          isDeployed: deployed,
+          isDeployed: openIDAccount.isDeployed,
         };
       }
     }
@@ -120,7 +122,7 @@ export const sendUserOpToBundler = async (
 
   return {
     userOpHash: uoHash,
-    isDeployed: deployed,
+    isDeployed: openIDAccount.isDeployed,
   };
 };
 
