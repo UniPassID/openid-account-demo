@@ -20,7 +20,7 @@ export default function HomePage() {
   const [api, contextHolder] = notification.useNotification();
   const [jwt, setJwt] = useState<JwtPayload | undefined>();
   const [ownerAddress, setOwnerAddress] = useState<string>("");
-  const [sendETHAmount, setSendETHAmount] = useState<string>("0");
+  const [sendETHAmount, setSendETHAmount] = useState<string>("0.001");
   const [sendToAddress, setSendToAddress] = useState<string>("");
   const [genAddressLoading, setGenAddressLoading] = useState<boolean>(false);
   const [ethLoading, setEthLoading] = useState<boolean>(false);
