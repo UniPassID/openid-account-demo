@@ -196,11 +196,19 @@ export default function HomePage() {
       console.log("uoHash: ", uoHash);
       const txHash = await openIDAccount?.getUserOpReceipt(uoHash.userOpHash);
       console.log("deploy tx hash: ", txHash);
-      api.success({
-        message: "Transaction Success",
-        description: `txHash: ${txHash}`,
-        placement: "bottomRight",
-      });
+      if (typeof txHash == "string") {
+        api.success({
+          message: "Transaction Success",
+          description: `txHash: ${txHash}`,
+          placement: "bottomRight",
+        });
+      } else {
+        api.error({
+          message: "Transaction failed",
+          description: "Cannot get txHash, please check the success of tx",
+          placement: "bottomRight",
+        });
+      }
     } catch (e: any) {
       api.error({
         message: "Transaction failed",
