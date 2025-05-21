@@ -168,8 +168,8 @@ export class OpenIDAccount extends BaseAccountAPI {
    * NOTE: createUnsignedUserOp will add to this value the cost of creation, if the contract is not yet created.
    */
   override async getVerificationGasLimit() {
-    console.log("getVerificationGasLimit", 620000);
-    return Promise.resolve(620000);
+    console.log("getVerificationGasLimit", 820000);
+    return Promise.resolve(820000);
   }
 
   async encodeExecute(

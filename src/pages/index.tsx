@@ -12,6 +12,8 @@ import {
   ProviderUrl,
   calcGasCost,
   sendUserOpToBundler,
+  waitForUserOpReceiptWithRetry,
+  BundlerUrl,
 } from "./utils";
 import { OpenIDAccount } from "../utils";
 import styles from "./index.less";
@@ -110,6 +112,7 @@ export default function HomePage() {
       setUserOp(userOp);
       const userOpHash = await openIDAccount?.getUserOpHash(userOp!);
       console.log("createUnsignedUserOp finish: ", userOp);
+      console.log("userOpHash: ", userOpHash);
       setUserOpHash(userOpHash);
     } catch (e: any) {
       api.error({
@@ -136,7 +139,13 @@ export default function HomePage() {
     try {
       const uoHash = await sendUserOpToBundler(openIDAccount!, userOp!);
       console.log("uoHash: ", uoHash);
-      const txHash = await openIDAccount?.getUserOpReceipt(uoHash.userOpHash);
+      
+      const txHash = await waitForUserOpReceiptWithRetry(
+        uoHash.userOpHash,
+        BundlerUrl,
+        openIDAccount!
+      );
+      
       console.log("deploy tx hash: ", txHash);
       api.success({
         message: "Deploy Success",
@@ -194,21 +203,19 @@ export default function HomePage() {
     try {
       const uoHash = await sendUserOpToBundler(openIDAccount!, userOp!);
       console.log("uoHash: ", uoHash);
-      const txHash = await openIDAccount?.getUserOpReceipt(uoHash.userOpHash);
-      console.log("deploy tx hash: ", txHash);
-      if (typeof txHash == "string") {
-        api.success({
-          message: "Transaction Success",
-          description: `txHash: ${txHash}`,
-          placement: "bottomRight",
-        });
-      } else {
-        api.error({
-          message: "Transaction failed",
-          description: "Cannot get txHash, please check the success of tx",
-          placement: "bottomRight",
-        });
-      }
+      
+      const txHash = await waitForUserOpReceiptWithRetry(
+        uoHash.userOpHash,
+        BundlerUrl,
+        openIDAccount!
+      );
+      
+      console.log("send tx hash: ", txHash);
+      api.success({
+        message: "Transaction Success",
+        description: `txHash: ${txHash}`,
+        placement: "bottomRight",
+      });
     } catch (e: any) {
       api.error({
         message: "Transaction failed",
@@ -334,7 +341,7 @@ export default function HomePage() {
                   }
                 />
                 {"  "}
-                Goerli ETH to
+                Sepolia ETH to
               </div>
               <Input
                 placeholder="Ethereum Address"

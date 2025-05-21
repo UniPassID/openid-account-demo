@@ -18,13 +18,15 @@ import {
 // export const BundlerUrl = "https://api.gelato.digital//bundlers/5/rpc"
 // export const BundlerUrl = "https://bundler-goerli.edennetwork.io"
 // export const BundlerUrl = "https://goerli-bundler.etherspot.io";
-export const BundlerUrl = "https://bundler.wallet.unipass.vip/eth-goerli";
+// export const BundlerUrl = "https://testnet-rpc.etherspot.io/v1/11155111?api-key=etherspot_3ZJzKKmnJMtqhaEhKrSMoDkk";
 // export const BundlerUrl = "http://192.168.15.215:4337/";
 // export const BundlerUrl = "https://public.stackup.sh/api/v1/node/ethereum-goerli";
-export const ProviderUrl = "https://node.wallet.unipass.id/eth-goerli";
+// export const BundlerUrl = "https://eth-sepolia.g.alchemy.com/v2/rzvib9_XWW8ZbMbPgnkMFi3u2acg0WJ2";
+export const BundlerUrl = "https://api.candide.dev/bundler/v3/sepolia/b6993f5e0678ab3b6076cbaf48984fcd";
+export const ProviderUrl = "https://eth-sepolia.g.alchemy.com/v2/zwSHMTpT98Rnrn9RGRjbD";
 export const EntryPointAddr = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
-export const FactoryAddr = "0x4342Ef649122B81cc81E6156DbBcb8e50CE05B84";
-export const ChainId = 5;
+export const FactoryAddr = "0x3E1543668D6c06E359F5F03c3261C9bB99439a8A";
+export const ChainId = 11155111;
 
 export const constructOpenIdAccount = async (
   ownerAddress: string,
@@ -117,6 +119,7 @@ export const sendUserOpToBundler = async (
           isDeployed: openIDAccount.isDeployed,
         };
       }
+      await sleep(500);
     }
   }
 
@@ -152,4 +155,66 @@ export const calcGasCost = async (userOp: UserOperationStruct) => {
   const gasLimit = await calcGasLimit(userOp);
   const gasPrice = BigNumber.from(await userOp.maxFeePerGas);
   return gasLimit.mul(gasPrice);
+};
+
+export const waitForUserOpReceiptWithRetry = async (
+  userOpHash: string,
+  bundlerUrl: string,
+  openIDAccount: OpenIDAccount,
+  timeout: number = 3 * 60 * 1000 // 3 minutes default timeout
+): Promise<string> => {
+  // First try the original getUserOpReceipt
+  try {
+    const txHash = await openIDAccount.getUserOpReceipt(userOpHash);
+    if (txHash) {
+      return txHash;
+    }
+  } catch (e) {
+    console.log("getUserOpReceipt failed, trying RPC polling:", e);
+  }
+
+  // If getUserOpReceipt fails or returns null, try RPC polling
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < timeout) {
+    try {
+      // Try eth_getUserOperationByHash
+      const response = await fetch(bundlerUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 0,
+          method: 'eth_getUserOperationByHash',
+          params: [userOpHash]
+        })
+      });
+
+      const userOpResponse = await response.json();
+      
+      if (userOpResponse.error) {
+        throw new Error(userOpResponse.error.message);
+      }
+
+      if (userOpResponse.result) {
+        // If transaction is included in a block
+        if (userOpResponse.result.blockHash && userOpResponse.result.transactionHash) {
+          return userOpResponse.result.transactionHash;
+        }
+      }
+
+      // Wait for 2 seconds before next poll
+      await sleep(2000);
+    } catch (e: any) {
+      console.log("Polling error:", e);
+      // Continue polling unless it's a definitive error
+      if (e.message?.includes("AA")) {
+        throw e;
+      }
+    }
+  }
+  
+  throw new Error("Transaction polling timed out after 3 minutes");
 };
